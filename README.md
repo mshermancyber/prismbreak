@@ -4,7 +4,7 @@ A cyberpunk-themed project management tracker that lets you manage multiple proj
 
 ## Features
 
-### 🎯 Multi-Project Dashboard
+### 🎯 Multi-Project Dashboardyber
 - Create unlimited projects with start dates and target completion dates
 - Real-time completion percentage tracking per project
 - Interactive task checkboxes directly in project cards
@@ -136,7 +136,7 @@ A cyberpunk-themed project management tracker that lets you manage multiple proj
 ## File Structure
 
 ```
-cyberpunk-tracker.html
+prism-break-timetracker.html
 ├── HTML Structure
 │   ├── Dashboard header
 │   ├── Control buttons
@@ -158,7 +158,7 @@ cyberpunk-tracker.html
 
 ## Getting Started
 
-1. Download `cyberpunk-tracker.html`
+1. Download `prism-break-timetracker.html`
 2. Open in any web browser
 3. Start creating projects
 4. Data automatically saves to browser storage
