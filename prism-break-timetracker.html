@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prism Break - Multi-Project Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --cyan: #00d4ff;
+            --magenta: #ff006e;
+            --green: #39ff14;
+            --dark: #0a0e27;
+            --card: #1a1f3a;
+            --border: #2a2f4a;
+            --text: #e0e0ff;
+            --gray: #a0a0cc;
+        }
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: linear-gradient(135deg, var(--dark) 0%, #0f1535 100%);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 2rem;
+            position: relative;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, rgba(0, 212, 255, 0.03) 0px, rgba(0, 212, 255, 0.03) 1px, transparent 1px, transparent 2px);
+            pointer-events: none;
+            z-index: -1;
+            animation: scanlines 8s linear infinite;
+        }
+        @keyframes scanlines { 0% { transform: translateY(0); } 100% { transform: translateY(10px); } }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 3rem; }
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, var(--cyan), var(--magenta), var(--green));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 2px;
+            margin-bottom: 0.5rem;
+        }
+        .header p { color: var(--gray); letter-spacing: 1px; }
+        .controls { display: flex; gap: 1rem; margin-bottom: 2rem; justify-content: center; }
+        button { padding: 0.75rem 1.5rem; border: none; font-weight: bold; text-transform: uppercase; cursor: pointer; font-family: 'IBM Plex Mono', monospace; border-radius: 2px; transition: all 0.3s; font-size: 0.85rem; }
+        .btn-primary { background: linear-gradient(135deg, var(--cyan), #00b4d8); color: var(--dark); }
+        .btn-primary:hover { box-shadow: 0 0 20px rgba(0, 212, 255, 0.6); transform: translateY(-2px); }
+        .btn-secondary { background: linear-gradient(135deg, var(--gray), #7a7aaa); color: var(--dark); }
+        .btn-secondary:hover { box-shadow: 0 0 15px rgba(160, 160, 204, 0.6); }
+        .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 2rem; }
+        .project-card {
+            background: rgba(26, 31, 58, 0.8);
+            border: 2px solid var(--border);
+            border-radius: 2px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            position: relative;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .project-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+            animation: topGlow 2s ease-in-out infinite;
+        }
+        @keyframes topGlow { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+        .project-card:hover { border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 212, 255, 0.2); }
+        .project-header { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+        .project-name { font-size: 1.1rem; color: var(--cyan); font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
+        .project-percent { font-size: 1.8rem; color: var(--magenta); font-weight: bold; }
+        .project-dates { font-size: 0.75rem; color: var(--gray); margin-top: 0.5rem; }
+        .project-desc { font-size: 0.85rem; color: var(--gray); margin-bottom: 1rem; line-height: 1.4; }
+        .progress-bar { width: 100%; height: 6px; background: rgba(10, 14, 39, 0.8); border: 1px solid var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 1rem; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--magenta)); box-shadow: 0 0 10px var(--cyan); }
+        .steps-preview { font-size: 0.75rem; color: var(--gray); margin-bottom: 1rem; max-height: 120px; overflow-y: auto; }
+        .step-line { padding: 0.3rem 0; }
+        .step-line.done { color: var(--green); text-decoration: line-through; }
+        .project-footer { display: flex; gap: 0.5rem; margin-top: auto; }
+        .project-footer button { flex: 1; padding: 0.5rem; font-size: 0.75rem; }
+        .btn-edit { background: linear-gradient(135deg, var(--magenta), #d90368); color: white; }
+        .btn-export { background: linear-gradient(135deg, var(--green), #2dff00); color: var(--dark); }
+        .btn-delete { background: linear-gradient(135deg, #ff4444, #cc0000); color: white; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; }
+        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+        .modal { background: rgba(26, 31, 58, 0.95); border: 2px solid var(--cyan); padding: 2rem; border-radius: 2px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 0 50px rgba(0, 212, 255, 0.4); }
+        .modal h2 { color: var(--cyan); margin-bottom: 1.5rem; text-transform: uppercase; letter-spacing: 2px; }
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; color: var(--cyan); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; }
+        input[type="text"], textarea, select { width: 100%; padding: 0.75rem; background: rgba(10, 14, 39, 0.8); border: 1px solid var(--cyan); color: var(--text); font-family: 'IBM Plex Mono', monospace; border-radius: 2px; font-size: 0.9rem; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--magenta); box-shadow: 0 0 10px rgba(255, 0, 110, 0.3); }
+        textarea { min-height: 80px; resize: vertical; }
+        .date-btn { cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .date-btn::after { content: '📅'; }
+        .steps-input { display: flex; gap: 0.5rem; align-items: flex-end; margin-bottom: 1rem; }
+        .steps-input input { flex: 1; }
+        .steps-input input[type="number"] { width: 70px; }
+        .steps-input button { flex: 0 0 auto; padding: 0.5rem 1rem; }
+        .steps-list-modal { max-height: 150px; overflow-y: auto; margin-bottom: 1rem; }
+        .step-item-modal { background: rgba(10, 14, 39, 0.6); border-left: 3px solid var(--magenta); padding: 0.5rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; }
+        .modal-buttons { display: flex; gap: 1rem; margin-top: 2rem; }
+        .modal-buttons button { flex: 1; padding: 0.75rem; }
+        .empty-state { text-align: center; padding: 3rem; color: var(--gray); }
+        .empty-state h2 { color: var(--cyan); margin-bottom: 1rem; font-size: 1.3rem; }
+        @media (max-width: 1024px) { .projects-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>▓ PRISM BREAK ▓</h1>
+            <p>[ MULTI-PROJECT DECOMPOSITION & TRACKING ]</p>
+        </div>
+
+        <div class="controls">
+            <button class="btn-primary" onclick="openNewProjectModal()">+ NEW PROJECT</button>
+            <button class="btn-secondary" onclick="exportDashboardVisual()">📊 EXPORT VISUAL</button>
+            <button class="btn-secondary" onclick="exportAllProjects()">📤 EXPORT JSON</button>
+            <button class="btn-secondary" onclick="document.getElementById('importFile').click()">📥 IMPORT</button>
+            <button style="background:linear-gradient(135deg,#ff4444,#cc0000);color:white;" onclick="resetAllProjects()">⚠ RESET ALL</button>
+            <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importProjects(event)">
+        </div>
+
+        <div class="projects-grid" id="projectsGrid">
+            <div class="empty-state">
+                <h2>No Projects Yet</h2>
+                <p>Click "NEW PROJECT" to start tracking</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- New/Edit Project Modal -->
+    <div class="modal-overlay" id="projectModal" onclick="if(event.target === this) closeProjectModal()">
+        <div class="modal">
+            <h2 id="modalTitle">New Project</h2>
+            
+            <div class="form-group">
+                <label>Project Name</label>
+                <input type="text" id="projectName" placeholder="Enter project name">
+            </div>
+
+            <div class="form-group">
+                <label>Start Date</label>
+                <button type="button" class="date-btn" onclick="openCalendar('projectStart')">
+                    <span id="projectStartDisplay">Select Date</span>
+                </button>
+                <input type="hidden" id="projectStartDate">
+            </div>
+
+            <div class="form-group">
+                <label>Target Completion</label>
+                <button type="button" class="date-btn" onclick="openCalendar('projectTarget')">
+                    <span id="projectTargetDisplay">Select Date</span>
+                </button>
+                <input type="hidden" id="projectTargetDate">
+            </div>
+
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="projectDescription" placeholder="Project description..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Add Step (with percentage weight)</label>
+                <div class="steps-input">
+                    <input type="text" id="stepName" placeholder="Step name...">
+                    <input type="number" id="stepWeight" placeholder="%" min="0" max="100" value="10" step="1">
+                    <button class="btn-primary" onclick="addStepToModal()">+ ADD</button>
+                </div>
+                <div style="font-size:0.75rem;color:var(--gray);margin-top:0.5rem;">
+                    Total: <span id="totalWeightDisplay" style="color:var(--green);font-weight:bold;">0%</span> / 100%
+                </div>
+            </div>
+
+            <div class="steps-list-modal" id="stepsListModal"></div>
+
+            <div class="modal-buttons">
+                <button class="btn-primary" onclick="saveProject()">SAVE PROJECT</button>
+                <button class="btn-secondary" onclick="closeProjectModal()">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendar Modal -->
+    <div class="modal-overlay" id="calendarOverlay" onclick="if(event.target === this) closeCalendar()">
+        <div class="modal" id="calendarModal"></div>
+    </div>
+
+    <script>
+        let projects = JSON.parse(localStorage.getItem('prismBreakProjects')) || [];
+        let editingProjectId = null;
+        let modalSteps = [];
+        let calendarMode = null;
+        let calendarCurrentDate = null;
+
+        // Initialize
+        renderProjectsGrid();
+
+        function openNewProjectModal() {
+            editingProjectId = null;
+            document.getElementById('modalTitle').textContent = 'New Project';
+            document.getElementById('projectName').value = '';
+            document.getElementById('projectDescription').value = '';
+            document.getElementById('projectStartDisplay').textContent = 'Select Date';
+            document.getElementById('projectTargetDisplay').textContent = 'Select Date';
+            document.getElementById('projectStartDate').value = '';
+            document.getElementById('projectTargetDate').value = '';
+            modalSteps = [];
+            renderStepsListModal();
+            document.getElementById('projectModal').classList.add('active');
+        }
+
+        function editProject(projectId) {
+            editingProjectId = projectId;
+            const project = projects.find(p => p.id === projectId);
+            document.getElementById('modalTitle').textContent = 'Edit Project';
+            document.getElementById('projectName').value = project.name;
+            document.getElementById('projectDescription').value = project.description;
+            document.getElementById('projectStartDisplay').textContent = new Date(project.startDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+            document.getElementById('projectTargetDisplay').textContent = new Date(project.targetDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+            document.getElementById('projectStartDate').value = project.startDate;
+            document.getElementById('projectTargetDate').value = project.targetDate;
+            modalSteps = JSON.parse(JSON.stringify(project.steps));
+            renderStepsListModal();
+            document.getElementById('projectModal').classList.add('active');
+        }
+
+        function closeProjectModal() {
+            document.getElementById('projectModal').classList.remove('active');
+        }
+
+        function addStepToModal() {
+            const name = document.getElementById('stepName').value.trim();
+            const weight = parseInt(document.getElementById('stepWeight').value) || 0;
+            
+            if (!name) { alert('Enter step name'); return; }
+            if (weight < 0 || weight > 100) { alert('Weight must be 0-100%'); return; }
+            
+            const currentTotal = modalSteps.reduce((sum, s) => sum + s.weight, 0);
+            if (currentTotal + weight > 100) { 
+                alert('Total weight cannot exceed 100%. Current: ' + currentTotal + '%, Adding: ' + weight + '%');
+                return; 
+            }
+            
+            modalSteps.push({ id: Date.now(), name: name, weight: weight, completed: false });
+            document.getElementById('stepName').value = '';
+            document.getElementById('stepWeight').value = '10';
+            renderStepsListModal();
+            updateTotalWeightDisplay();
+        }
+
+        function removeStepFromModal(stepId) {
+            modalSteps = modalSteps.filter(s => s.id !== stepId);
+            renderStepsListModal();
+        }
+
+        function renderStepsListModal() {
+            const container = document.getElementById('stepsListModal');
+            container.innerHTML = modalSteps.map(step => `
+                <div class="step-item-modal">
+                    <span>${step.name} <strong>(${step.weight}%)</strong></span>
+                    <button class="btn-delete" style="padding:0.3rem 0.6rem;font-size:0.7rem;" onclick="removeStepFromModal(${step.id})">×</button>
+                </div>
+            `).join('');
+            updateTotalWeightDisplay();
+        }
+
+        function updateTotalWeightDisplay() {
+            const total = modalSteps.reduce((sum, s) => sum + s.weight, 0);
+            const display = document.getElementById('totalWeightDisplay');
+            if (display) {
+                display.textContent = total + '%';
+                if (total > 100) {
+                    display.style.color = '#ff4444';
+                } else if (total === 100) {
+                    display.style.color = 'var(--green)';
+                } else {
+                    display.style.color = 'var(--cyan)';
+                }
+            }
+        }
+
+        function saveProject() {
+            const name = document.getElementById('projectName').value.trim();
+            const startDate = document.getElementById('projectStartDate').value;
+            const targetDate = document.getElementById('projectTargetDate').value;
+            const description = document.getElementById('projectDescription').value;
+            const totalWeight = modalSteps.reduce((sum, s) => sum + s.weight, 0);
+
+            if (!name || !startDate || !targetDate || modalSteps.length === 0) {
+                alert('Complete all fields and add at least one step');
+                return;
+            }
+
+            if (totalWeight !== 100) {
+                alert('All steps must total exactly 100%. Current total: ' + totalWeight + '%');
+                return;
+            }
+
+            if (editingProjectId) {
+                const project = projects.find(p => p.id === editingProjectId);
+                project.name = name;
+                project.startDate = startDate;
+                project.targetDate = targetDate;
+                project.description = description;
+                project.steps = modalSteps;
+            } else {
+                projects.push({
+                    id: Date.now(),
+                    name: name,
+                    startDate: startDate,
+                    targetDate: targetDate,
+                    description: description,
+                    steps: modalSteps
+                });
+            }
+
+            localStorage.setItem('prismBreakProjects', JSON.stringify(projects));
+            renderProjectsGrid();
+            closeProjectModal();
+        }
+
+        function deleteProject(projectId) {
+            if (!confirm('Delete this project?')) return;
+            projects = projects.filter(p => p.id !== projectId);
+            localStorage.setItem('prismBreakProjects', JSON.stringify(projects));
+            renderProjectsGrid();
+        }
+
+        function exportProject(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            const totalWeight = project.steps.reduce((sum, s) => sum + s.weight, 0);
+            const completedWeight = project.steps.filter(s => s.completed).reduce((sum, s) => sum + s.weight, 0);
+            const percent = totalWeight ? Math.round((completedWeight / totalWeight) * 100) : 0;
+            const startDisp = new Date(project.startDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+            const targetDisp = new Date(project.targetDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+            const stepsHtml = project.steps.map(s => '<div style="display:flex;align-items:center;padding:1rem;background:rgba(10,14,39,0.6);border-left:3px solid var(--magenta);margin-bottom:0.75rem;border-radius:2px;"><input type="checkbox" id="step' + s.id + '" ' + (s.completed ? 'checked' : '') + ' onchange="updateProgress()" style="width:20px;height:20px;margin-right:1rem;cursor:pointer;accent-color:var(--green);"><label for="step' + s.id + '" style="flex:1;cursor:pointer;">' + s.name + ' <span style="color:var(--green);font-weight:bold;">(' + s.weight + '%)</span></label></div>').join('');
+            
+            const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' + project.name + ' - Prism Break</title><style>*{margin:0;padding:0;box-sizing:border-box}:root{--cyan:#00d4ff;--magenta:#ff006e;--green:#39ff14;--dark:#0a0e27;--card:#1a1f3a;--border:#2a2f4a;--text:#e0e0ff;--gray:#a0a0cc;}html,body{width:100%;height:100%;}body{font-family:"IBM Plex Mono",monospace;background:linear-gradient(135deg,var(--dark) 0%,#0f1535 100%);color:var(--text);padding:2rem;overflow-y:auto;}body::before{content:"";position:fixed;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(0,212,255,0.03) 0px,rgba(0,212,255,0.03) 1px,transparent 1px,transparent 2px);pointer-events:none;z-index:-1;animation:scanlines 8s linear infinite;}@keyframes scanlines{0%{transform:translateY(0);}100%{transform:translateY(10px);}}.container{max-width:800px;margin:0 auto;position:relative;z-index:1;}.header{text-align:center;margin-bottom:2rem;}.header h1{font-size:2.2rem;background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--green));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;margin-bottom:0.5rem;}.header .subtitle{color:var(--gray);font-size:0.95rem;letter-spacing:1px;}.card{background:rgba(26,31,58,0.8);border:2px solid var(--border);padding:2rem;margin-bottom:2rem;backdrop-filter:blur(10px);position:relative;}.card h2{color:var(--cyan);margin-bottom:1.5rem;text-transform:uppercase;letter-spacing:2px;}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem;}.info-item{border-left:3px solid var(--magenta);padding-left:1rem;}.info-label{font-size:0.8rem;color:var(--cyan);text-transform:uppercase;margin-bottom:0.5rem;}.info-value{font-size:1.1rem;color:var(--text);}.description{background:rgba(10,14,39,0.5);border:1px solid var(--border);padding:1rem;margin-bottom:1.5rem;border-radius:2px;font-size:0.95rem;color:var(--gray);line-height:1.6;}.progress-container{margin-bottom:2rem;}.progress-label{display:flex;justify-content:space-between;margin-bottom:0.75rem;font-size:0.9rem;}.progress-label .label{color:var(--cyan);text-transform:uppercase;letter-spacing:1px;}.progress-label .percent{color:var(--magenta);font-weight:bold;}.progress-bar{width:100%;height:8px;background:rgba(10,14,39,0.8);border:1px solid var(--border);border-radius:2px;overflow:hidden;}.progress-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--magenta));transition:width 0.3s ease;box-shadow:0 0 15px var(--cyan);}.steps-list{display:flex;flex-direction:column;gap:0.75rem;}.stat-box{background:rgba(0,212,255,0.05);border:1px solid var(--cyan);padding:1.5rem;text-align:center;border-radius:2px;}.stat-label{font-size:0.75rem;color:var(--gray);text-transform:uppercase;margin-bottom:0.75rem;}.stat-value{font-size:1.8rem;color:var(--magenta);font-weight:bold;}.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:2rem;}.footer{text-align:center;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);color:var(--gray);font-size:0.85rem;}@media(max-width:768px){.info-grid{grid-template-columns:1fr;}.stats-grid{grid-template-columns:1fr;}}</style></head><body><div class="container"><div class="header"><h1>▓ ' + project.name.toUpperCase() + ' ▓</h1><div class="subtitle">[ PRISM BREAK TRACKER ]</div></div><div class="card"><h2>Overview</h2><div class="info-grid"><div class="info-item"><div class="info-label">Start Date</div><div class="info-value">' + startDisp + '</div></div><div class="info-item"><div class="info-label">Target Completion</div><div class="info-value">' + targetDisp + '</div></div></div>' + (project.description ? '<div class="description">' + project.description + '</div>' : '') + '<div class="progress-container"><div class="progress-label"><span class="label">Weighted Progress</span><span class="percent" id="percentDisplay">' + percent + '%</span></div><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:' + percent + '%"></div></div></div><div class="stats-grid"><div class="stat-box"><div class="stat-label">Completed Weight</div><div class="stat-value" id="completedCount">' + completedWeight + '</div></div><div class="stat-box"><div class="stat-label">Total Weight</div><div class="stat-value" id="totalCount">' + totalWeight + '</div></div><div class="stat-box"><div class="stat-label">Completion</div><div class="stat-value">' + percent + '%</div></div></div></div><div class="card"><h2>Progression Steps</h2><div class="steps-list">' + stepsHtml + '</div></div><div class="footer"><p>▓ PRISM BREAK ▓</p><p>Generated: ' + new Date().toLocaleString() + '</p></div></div></body><script>function updateProgress(){const checkboxes=document.querySelectorAll("input[type=checkbox]");let completedWeight=0;let totalWeight=0;' + project.steps.map(s => 'completedWeight+=' + (s.completed ? s.weight : 0) + ';totalWeight+=' + s.weight + ';').join('') + 'const percent=totalWeight?Math.round((completedWeight/totalWeight)*100):0;document.getElementById("progressFill").style.width=percent+"%";document.getElementById("percentDisplay").textContent=percent+"%";document.getElementById("completedCount").textContent=completedWeight;document.getElementById("totalCount").textContent=totalWeight;}<\/script></html>';
+
+            const blob = new Blob([html], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = project.name.replace(/\s+/g, '_') + '_tracker.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function renderProjectsGrid() {
+            const grid = document.getElementById('projectsGrid');
+            
+            if (projects.length === 0) {
+                grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><h2>No Projects Yet</h2><p>Click "NEW PROJECT" to start tracking</p></div>';
+                return;
+            }
+
+            grid.innerHTML = projects.map(project => {
+                const totalWeight = project.steps.reduce((sum, s) => sum + s.weight, 0);
+                const completedWeight = project.steps.filter(s => s.completed).reduce((sum, s) => sum + s.weight, 0);
+                const percent = totalWeight ? Math.round((completedWeight / totalWeight) * 100) : 0;
+                const startDate = new Date(project.startDate).toLocaleDateString('en-US', {month:'short',day:'numeric'});
+                const targetDate = new Date(project.targetDate).toLocaleDateString('en-US', {month:'short',day:'numeric'});
+
+                return `
+                    <div class="project-card">
+                        <div class="project-header">
+                            <div class="project-name">${project.name}</div>
+                            <div class="project-percent">${percent}%</div>
+                            <div class="project-dates">${startDate} → ${targetDate}</div>
+                        </div>
+                        
+                        ${project.description ? '<div class="project-desc">' + project.description + '</div>' : ''}
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${percent}%"></div>
+                        </div>
+
+                        <div class="steps-preview">
+                            ${project.steps.map(s => `
+                                <div class="step-line ${s.completed ? 'done' : ''}" style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;">
+                                    <input type="checkbox" ${s.completed ? 'checked' : ''} onchange="toggleStepCompletion(${project.id}, ${s.id})" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green);">
+                                    <span style="flex:1;${s.completed ? 'text-decoration:line-through;' : ''}">${s.name} <span style="color:var(--green);">(${s.weight}%)</span></span>
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <div class="project-footer">
+                            <button class="btn-edit" onclick="editProject(${project.id})">✎ EDIT</button>
+                            <button class="btn-export" onclick="exportProjectVisual(${project.id})">📊 VISUAL</button>
+                            <button class="btn-delete" onclick="deleteProject(${project.id})">🗑 DELETE</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openCalendar(mode) {
+            calendarMode = mode;
+            const fieldId = mode === 'projectStart' ? 'projectStartDate' : 'projectTargetDate';
+            const existing = document.getElementById(fieldId).value;
+            calendarCurrentDate = existing ? new Date(existing) : new Date();
+            renderCalendar();
+            document.getElementById('calendarOverlay').classList.add('active');
+        }
+
+        function closeCalendar() {
+            document.getElementById('calendarOverlay').classList.remove('active');
+        }
+
+        function renderCalendar() {
+            const month = calendarCurrentDate.getMonth();
+            const year = calendarCurrentDate.getFullYear();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startingDayOfWeek = firstDay.getDay();
+            const daysInMonth = lastDay.getDate();
+            const prevLastDay = new Date(year, month, 0).getDate();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+            let html = '<div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border);">';
+            html += '<div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">';
+            
+            html += '<select onchange="changeMonthCalendar(this.value)" style="flex:1;padding:0.5rem;background:rgba(10,14,39,0.8);border:1px solid var(--cyan);color:var(--text);font-family:IBM Plex Mono,monospace;border-radius:2px;cursor:pointer;font-size:0.85rem;">';
+            monthNames.forEach((m, i) => {
+                html += '<option value="' + i + '" ' + (i === month ? 'selected' : '') + '>' + m + '</option>';
+            });
+            html += '</select>';
+            
+            html += '<select onchange="changeYearCalendar(this.value)" style="flex:0.6;padding:0.5rem;background:rgba(10,14,39,0.8);border:1px solid var(--cyan);color:var(--text);font-family:IBM Plex Mono,monospace;border-radius:2px;cursor:pointer;font-size:0.85rem;">';
+            const currentYear = new Date().getFullYear();
+            for (let y = currentYear - 5; y <= currentYear + 10; y++) {
+                html += '<option value="' + y + '" ' + (y === year ? 'selected' : '') + '>' + y + '</option>';
+            }
+            html += '</select>';
+            html += '</div>';
+            
+            html += '<div style="display:flex;gap:0.25rem;">';
+            html += '<button style="flex:1;padding:0.4rem;background:rgba(0,212,255,0.1);border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:0.75rem;font-weight:bold;text-transform:uppercase;" onclick="prevMonthCalendar()">← Prev</button>';
+            html += '<button style="flex:1;padding:0.4rem;background:rgba(0,212,255,0.1);border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:0.75rem;font-weight:bold;text-transform:uppercase;" onclick="goTodayCalendar()">Today</button>';
+            html += '<button style="flex:1;padding:0.4rem;background:rgba(0,212,255,0.1);border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:0.75rem;font-weight:bold;text-transform:uppercase;" onclick="nextMonthCalendar()">Next →</button>';
+            html += '</div>';
+            html += '</div>';
+
+            html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0.25rem;margin-bottom:0.5rem;">';
+            ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
+                html += '<div style="text-align:center;font-size:0.75rem;color:var(--magenta);text-transform:uppercase;padding:0.5rem 0;font-weight:bold;">' + d + '</div>';
+            });
+            html += '</div>';
+
+            html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0.25rem;margin-bottom:1rem;">';
+
+            for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+                html += '<div style="padding:0.5rem;text-align:center;color:var(--border);font-size:0.85rem;">' + (prevLastDay - i) + '</div>';
+            }
+
+            const fieldId = calendarMode === 'projectStart' ? 'projectStartDate' : 'projectTargetDate';
+            const selected = document.getElementById(fieldId).value;
+            const today = new Date();
+            for (let day = 1; day <= daysInMonth; day++) {
+                const d = new Date(year, month, day);
+                const isSelected = selected && d.toDateString() === new Date(selected).toDateString();
+                const isToday = d.toDateString() === today.toDateString();
+                let style = 'padding:0.5rem;text-align:center;cursor:pointer;border:1px solid var(--border);border-radius:2px;font-size:0.85rem;';
+                if (isSelected) style += 'background:linear-gradient(135deg,var(--cyan),#00b4d8);color:var(--dark);font-weight:bold;box-shadow:0 0 10px rgba(0,212,255,0.5);';
+                if (isToday) style += 'border:2px solid var(--magenta);';
+                html += '<div style="' + style + '" onclick="selectDateCalendar(' + day + ')">' + day + '</div>';
+            }
+
+            const remainingCells = (Math.ceil((startingDayOfWeek + daysInMonth) / 7) * 7) - (startingDayOfWeek + daysInMonth);
+            for (let day = 1; day <= remainingCells; day++) {
+                html += '<div style="padding:0.5rem;text-align:center;color:var(--border);font-size:0.85rem;">' + day + '</div>';
+            }
+            html += '</div>';
+
+            html += '<div style="display:flex;gap:0.5rem;">';
+            html += '<button style="flex:1;padding:0.6rem;background:linear-gradient(135deg,var(--magenta),#d90368);color:white;border:none;border-radius:2px;cursor:pointer;font-weight:bold;font-family:IBM Plex Mono,monospace;text-transform:uppercase;font-size:0.8rem;" onclick="closeCalendar()">CLOSE</button>';
+            html += '</div>';
+
+            document.getElementById('calendarModal').innerHTML = html;
+        }
+
+        function selectDateCalendar(day) {
+            const d = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth(), day);
+            const dateStr = d.toISOString().split('T')[0];
+            const displayStr = d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+            
+            if (calendarMode === 'projectStart') {
+                document.getElementById('projectStartDate').value = dateStr;
+                document.getElementById('projectStartDisplay').textContent = displayStr;
+            } else {
+                document.getElementById('projectTargetDate').value = dateStr;
+                document.getElementById('projectTargetDisplay').textContent = displayStr;
+            }
+            
+            closeCalendar();
+        }
+
+        function changeMonthCalendar(newMonth) {
+            calendarCurrentDate.setMonth(parseInt(newMonth));
+            renderCalendar();
+        }
+
+        function changeYearCalendar(newYear) {
+            calendarCurrentDate.setFullYear(parseInt(newYear));
+            renderCalendar();
+        }
+
+        function prevMonthCalendar() {
+            calendarCurrentDate.setMonth(calendarCurrentDate.getMonth() - 1);
+            renderCalendar();
+        }
+
+        function nextMonthCalendar() {
+            calendarCurrentDate.setMonth(calendarCurrentDate.getMonth() + 1);
+            renderCalendar();
+        }
+
+        function goTodayCalendar() {
+            calendarCurrentDate = new Date();
+            renderCalendar();
+        }
+
+        function resetAllProjects() {
+            if (!confirm('⚠ THIS WILL DELETE ALL PROJECTS PERMANENTLY!\n\nAre you absolutely sure? This cannot be undone.')) {
+                return;
+            }
+            
+            if (!confirm('Really delete everything? Click OK one more time to confirm.')) {
+                return;
+            }
+
+            projects = [];
+            localStorage.setItem('prismBreakProjects', JSON.stringify(projects));
+            renderProjectsGrid();
+            alert('✓ All projects cleared');
+        }
+
+        function toggleStepCompletion(projectId, stepId) {
+            const project = projects.find(p => p.id === projectId);
+            if (project) {
+                const step = project.steps.find(s => s.id === stepId);
+                if (step) {
+                    step.completed = !step.completed;
+                    localStorage.setItem('prismBreakProjects', JSON.stringify(projects));
+                    renderProjectsGrid();
+                }
+            }
+        }
+
+        function exportDashboardVisual() {
+            let cardsHtml = '';
+            let totalProjects = projects.length;
+            let totalWeight = 0;
+            let completedWeight = 0;
+
+            projects.forEach(project => {
+                const tw = project.steps.reduce((sum, s) => sum + s.weight, 0);
+                const cw = project.steps.filter(s => s.completed).reduce((sum, s) => sum + s.weight, 0);
+                totalWeight += tw;
+                completedWeight += cw;
+                const percent = tw ? Math.round((cw / tw) * 100) : 0;
+                const startDate = new Date(project.startDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+                const targetDate = new Date(project.targetDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+
+                cardsHtml += `<div style="background:rgba(26,31,58,0.8);border:2px solid var(--border);padding:1.5rem;border-radius:2px;transition:all 0.3s;">
+                    <div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border);">
+                        <div style="font-size:1.1rem;color:var(--cyan);font-weight:bold;text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;">${project.name}</div>
+                        <div style="font-size:1.8rem;color:var(--magenta);font-weight:bold;">${percent}%</div>
+                        <div style="font-size:0.75rem;color:var(--gray);margin-top:0.5rem;">${startDate} → ${targetDate}</div>
+                    </div>
+                    ${project.description ? '<div style="font-size:0.85rem;color:var(--gray);margin-bottom:1rem;line-height:1.4;">' + project.description + '</div>' : ''}
+                    <div style="width:100%;height:6px;background:rgba(10,14,39,0.8);border:1px solid var(--border);border-radius:2px;overflow:hidden;margin-bottom:1rem;">
+                        <div style="height:100%;background:linear-gradient(90deg,var(--cyan),var(--magenta));width:${percent}%;box-shadow:0 0 10px var(--cyan);"></div>
+                    </div>
+                    <div style="font-size:0.75rem;color:var(--gray);">
+                        ${project.steps.map(s => `<div style="padding:0.3rem 0;${s.completed ? 'text-decoration:line-through;color:var(--green);' : ''}">${s.completed ? '✓' : '○'} ${s.name} <span style="color:var(--green);">(${s.weight}%)</span></div>`).join('')}
+                    </div>
+                </div>`;
+            });
+
+            const overallPercent = totalWeight ? Math.round((completedWeight / totalWeight) * 100) : 0;
+
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Prism Break Dashboard</title><style>*{margin:0;padding:0;box-sizing:border-box}:root{--cyan:#00d4ff;--magenta:#ff006e;--green:#39ff14;--dark:#0a0e27;--border:#2a2f4a;--text:#e0e0ff;--gray:#a0a0cc;}html,body{width:100%;height:100%;}body{font-family:"IBM Plex Mono",monospace;background:linear-gradient(135deg,var(--dark) 0%,#0f1535 100%);color:var(--text);padding:2rem;overflow-y:auto;}body::before{content:"";position:fixed;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(0,212,255,0.03) 0px,rgba(0,212,255,0.03) 1px,transparent 1px,transparent 2px);pointer-events:none;z-index:-1;animation:scanlines 8s infinite;}@keyframes scanlines{0%{transform:translateY(0);}100%{transform:translateY(10px);}}.container{max-width:1600px;margin:0 auto;position:relative;z-index:1;}.header{text-align:center;margin-bottom:2rem;}.header h1{font-size:2.5rem;background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--green));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;margin-bottom:0.5rem;}.header p{color:var(--gray);letter-spacing:1px;}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem;}.stat-card{background:rgba(26,31,58,0.8);border:2px solid var(--cyan);padding:1.5rem;border-radius:2px;text-align:center;}.stat-label{font-size:0.75rem;color:var(--gray);text-transform:uppercase;margin-bottom:0.5rem;}.stat-value{font-size:2rem;color:var(--magenta);font-weight:bold;}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:2rem;}.footer{text-align:center;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);color:var(--gray);font-size:0.85rem;}@media(max-width:768px){.grid{grid-template-columns:1fr;}.stats{grid-template-columns:1fr;}}</style></head><body><div class="container"><div class="header"><h1>▓ PRISM BREAK ▓</h1><p>[ PROJECT DASHBOARD ]</p></div><div class="stats"><div class="stat-card"><div class="stat-label">Total Projects</div><div class="stat-value">${totalProjects}</div></div><div class="stat-card"><div class="stat-label">Overall Progress</div><div class="stat-value">${overallPercent}%</div></div><div class="stat-card"><div class="stat-label">Completed Weight</div><div class="stat-value">${completedWeight}/${totalWeight}</div></div></div><div class="grid">${cardsHtml}</div><div class="footer"><p>▓ PRISM BREAK ▓</p><p>Exported: ${new Date().toLocaleString()}</p></div></div></body></html>`;
+
+            const blob = new Blob([html], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'prism-break-dashboard-' + new Date().toISOString().split('T')[0] + '.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert('✓ Dashboard visual exported');
+        }
+
+        function exportProjectVisual(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            const totalWeight = project.steps.reduce((sum, s) => sum + s.weight, 0);
+            const completedWeight = project.steps.filter(s => s.completed).reduce((sum, s) => sum + s.weight, 0);
+            const percent = totalWeight ? Math.round((completedWeight / totalWeight) * 100) : 0;
+            const startDate = new Date(project.startDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+            const targetDate = new Date(project.targetDate).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+
+            const stepsHtml = project.steps.map(s => `<div style="display:flex;align-items:center;padding:1rem;background:rgba(10,14,39,0.6);border-left:3px solid var(--magenta);margin-bottom:0.75rem;border-radius:2px;"><input type="checkbox" ${s.completed ? 'checked' : ''} disabled style="width:20px;height:20px;margin-right:1rem;accent-color:var(--green);"><label style="flex:1;cursor:default;${s.completed ? 'text-decoration:line-through;color:var(--green);' : ''}">${s.name} <span style="color:var(--green);font-weight:bold;">(${s.weight}pt)</span></label></div>`).join('');
+
+            const weightBreakdown = project.steps.map(s => `<div style="display:flex;justify-content:space-between;padding:0.5rem 0;font-size:0.85rem;border-bottom:1px solid var(--border);"><span>${s.name}</span><span style="color:${s.completed ? 'var(--green)' : 'var(--gray)'};">${s.weight}pt ${s.completed ? '✓' : '○'}</span></div>`).join('');
+
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${project.name} - Prism Break</title><style>*{margin:0;padding:0;box-sizing:border-box}:root{--cyan:#00d4ff;--magenta:#ff006e;--green:#39ff14;--dark:#0a0e27;--border:#2a2f4a;--text:#e0e0ff;--gray:#a0a0cc;}html,body{width:100%;height:100%;}body{font-family:"IBM Plex Mono",monospace;background:linear-gradient(135deg,var(--dark) 0%,#0f1535 100%);color:var(--text);padding:2rem;overflow-y:auto;}body::before{content:"";position:fixed;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(0,212,255,0.03) 0px,rgba(0,212,255,0.03) 1px,transparent 1px,transparent 2px);pointer-events:none;z-index:-1;animation:scanlines 8s infinite;}@keyframes scanlines{0%{transform:translateY(0);}100%{transform:translateY(10px);}}@keyframes glow{0%,100%{box-shadow:0 0 10px rgba(0,212,255,0.5);}50%{box-shadow:0 0 20px rgba(0,212,255,0.8);}}.container{max-width:900px;margin:0 auto;position:relative;z-index:1;}.header{text-align:center;margin-bottom:2rem;animation:glow 3s infinite;}.header h1{font-size:2.5rem;background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--green));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;margin-bottom:0.5rem;}.header p{color:var(--gray);font-size:0.95rem;letter-spacing:1px;}.card{background:rgba(26,31,58,0.8);border:2px solid var(--border);padding:2rem;margin-bottom:2rem;border-radius:2px;position:relative;}.card::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);animation:topGlow 2s infinite;}@keyframes topGlow{0%,100%{opacity:0.3;}50%{opacity:1;}}.card h2{color:var(--cyan);margin-bottom:1.5rem;text-transform:uppercase;letter-spacing:2px;}.overview{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-bottom:2rem;}.overview-item{border-left:3px solid var(--magenta);padding-left:1rem;}.overview-label{font-size:0.8rem;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem;}.overview-value{font-size:1.5rem;color:var(--text);}.progress-label{display:flex;justify-content:space-between;margin-bottom:0.75rem;font-size:0.9rem;}.progress-label .label{color:var(--cyan);text-transform:uppercase;}.progress-label .percent{color:var(--magenta);font-weight:bold;}.progress-bar{width:100%;height:12px;background:rgba(10,14,39,0.8);border:1px solid var(--border);border-radius:2px;overflow:hidden;margin-bottom:2rem;}.progress-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--magenta));width:${percent}%;box-shadow:0 0 15px var(--cyan);transition:width 0.5s ease;}.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem;}.stat-box{background:rgba(0,212,255,0.05);border:1px solid var(--cyan);padding:1.5rem;text-align:center;border-radius:2px;}.stat-label{font-size:0.75rem;color:var(--gray);text-transform:uppercase;margin-bottom:0.75rem;}.stat-value{font-size:2rem;color:var(--magenta);font-weight:bold;}.description{background:rgba(10,14,39,0.5);border:1px solid var(--border);padding:1rem;margin-bottom:1.5rem;border-radius:2px;font-size:0.95rem;color:var(--gray);line-height:1.6;}.footer{text-align:center;margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border);color:var(--gray);font-size:0.85rem;}@media print{body{padding:1rem;}.card{page-break-inside:avoid;}}</style></head><body><div class="container"><div class="header"><h1>▓ ${project.name.toUpperCase()} ▓</h1><p>[ PRISM BREAK PROJECT TRACKER ]</p></div><div class="card"><h2>Overview</h2><div class="overview"><div class="overview-item"><div class="overview-label">Start Date</div><div class="overview-value">${startDate}</div></div><div class="overview-item"><div class="overview-label">Target Completion</div><div class="overview-value">${targetDate}</div></div></div>${project.description ? '<div class="description">' + project.description + '</div>' : ''}</div><div class="card"><h2>Progress</h2><div class="progress-label"><span class="label">Weighted Completion</span><span class="percent">${percent}%</span></div><div class="progress-bar"><div class="progress-fill"></div></div><div class="stats-grid"><div class="stat-box"><div class="stat-label">Completed Weight</div><div class="stat-value">${completedWeight}</div></div><div class="stat-box"><div class="stat-label">Total Weight</div><div class="stat-value">${totalWeight}</div></div><div class="stat-box"><div class="stat-label">Completion</div><div class="stat-value">${percent}%</div></div></div></div><div class="card"><h2>Task Breakdown</h2><div style="font-size:0.9rem;">${weightBreakdown}</div></div><div class="card"><h2>Tasks</h2><div>${stepsHtml}</div></div><div class="footer"><p>▓ PRISM BREAK ▓</p><p>Exported: ${new Date().toLocaleString()}</p></div></div></body></html>`;
+
+            const blob = new Blob([html], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = project.name.replace(/\s+/g, '_') + '-visual.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert('✓ Project visual exported');
+        }
+
+        function exportAllProjects() {
+            const data = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                projectCount: projects.length,
+                projects: projects
+            };
+
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'prism-break-projects-' + new Date().toISOString().split('T')[0] + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert('✓ Exported ' + projects.length + ' project(s)');
+        }
+
+        function importProjects(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (!data.projects || !Array.isArray(data.projects)) {
+                        alert('✗ Invalid file format. Must be a Prism Break export.');
+                        return;
+                    }
+
+                    if (confirm('Import ' + data.projects.length + ' project(s)? Existing projects will be merged.')) {
+                        const importedIds = data.projects.map(p => p.id);
+                        const newProjects = data.projects.filter(p => !projects.find(ep => ep.id === p.id));
+                        projects = projects.concat(newProjects);
+                        localStorage.setItem('prismBreakProjects', JSON.stringify(projects));
+                        renderProjectsGrid();
+                        alert('✓ Imported ' + newProjects.length + ' new project(s)');
+                    }
+                } catch (error) {
+                    alert('✗ Error parsing file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+    </script>
+</body>
+</html>
